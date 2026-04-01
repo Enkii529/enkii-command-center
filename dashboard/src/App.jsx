@@ -4,6 +4,7 @@ import ChatPanel from './components/ChatPanel.jsx'
 import QuickActions from './components/QuickActions.jsx'
 import ActivityFeed from './components/ActivityFeed.jsx'
 import ModelSelector from './components/ModelSelector.jsx'
+import N8nBuilder from './components/N8nBuilder.jsx'
 import { fetchModels, fetchSummary } from './api.js'
 
 const styles = {
@@ -161,6 +162,7 @@ export default function App() {
       <div style={{ ...styles.grid, marginTop: '20px' }}>
         <div style={styles.leftCol}>
           <ChatPanel model={selectedModel} />
+          <N8nBuilder model={selectedModel} />
         </div>
         <div style={styles.rightCol}>
           <QuickActions />

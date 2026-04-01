@@ -55,39 +55,54 @@ Available actions:
 
 If the user is just chatting or asking a question that doesn't need an action, respond normally without JSON. Be friendly, concise, and helpful. When you execute an action, briefly explain what you're doing."""
 
-N8N_WORKFLOW_PROMPT = """You are an n8n workflow builder. Generate a valid n8n workflow JSON based on the user's description.
+N8N_WORKFLOW_PROMPT = """You are an expert n8n workflow builder. Generate a complete, valid n8n workflow JSON.
 
-IMPORTANT RULES:
-- Return ONLY valid JSON with keys: "name", "nodes", "connections"
-- Every workflow MUST have exactly one trigger node as the first node
-- Use real n8n node types (e.g. "n8n-nodes-base.scheduleTrigger", "n8n-nodes-base.httpRequest", "n8n-nodes-base.set", "n8n-nodes-base.if", "n8n-nodes-base.code", "n8n-nodes-base.webhook")
-- Each node needs: "name", "type", "typeVersion", "position" (array of [x, y]), "parameters"
-- Connections format: {"NodeName": {"main": [[{"node": "NextNodeName", "type": "main", "index": 0}]]}}
-- Position nodes left-to-right, starting at [250, 300], increment x by 250
-- The Command Center API is at http://api:8080 (inside Docker network)
+OUTPUT FORMAT: Return ONLY a raw JSON object. No markdown, no code fences, no explanation. Just the JSON.
 
-Common n8n node types:
-- n8n-nodes-base.scheduleTrigger — runs on a cron schedule (parameters: {"rule": {"interval": [{"field": "hours", "hoursInterval": 1}]}})
-- n8n-nodes-base.webhook — HTTP webhook trigger (parameters: {"path": "my-hook", "httpMethod": "POST"})
-- n8n-nodes-base.manualTrigger — manual run button (parameters: {})
-- n8n-nodes-base.httpRequest — make HTTP calls (parameters: {"url": "...", "method": "GET|POST", "sendBody": true, "bodyParameters": {"parameters": [{"name": "...", "value": "..."}]}})
-- n8n-nodes-base.set — set/transform data (parameters: {"assignments": {"assignments": [{"name": "...", "value": "...", "type": "string"}]}})
-- n8n-nodes-base.if — conditional branch (parameters: {"conditions": {"options": {"version": 2}, "combinator": "and", "conditions": [{"leftValue": "...", "rightValue": "...", "operator": {"type": "string", "operation": "equals"}}]}})
-- n8n-nodes-base.code — run JavaScript (parameters: {"jsCode": "return items;"})
+REQUIRED JSON KEYS: "name" (string), "nodes" (array), "connections" (object)
 
-Example — workflow that checks for new documents every hour and sends them to Ollama for summarization:
+NODE STRUCTURE — every node must have ALL of these fields:
 {
-  "name": "Auto-Summarize New Documents",
-  "nodes": [
-    {"name": "Every Hour", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [250, 300], "parameters": {"rule": {"interval": [{"field": "hours", "hoursInterval": 1}]}}},
-    {"name": "Get New Docs", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [500, 300], "parameters": {"url": "http://api:8080/documents", "method": "GET"}},
-    {"name": "Filter New", "type": "n8n-nodes-base.if", "typeVersion": 2.2, "position": [750, 300], "parameters": {"conditions": {"options": {"version": 2}, "combinator": "and", "conditions": [{"leftValue": "={{ $json.status }}", "rightValue": "new", "operator": {"type": "string", "operation": "equals"}}]}}},
-    {"name": "Summarize", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [1000, 300], "parameters": {"url": "http://api:8080/ai/summarize", "method": "POST", "sendBody": true, "specifyBody": "json", "jsonBody": "={{ JSON.stringify({text: $json.raw_text}) }}"}}
-  ],
-  "connections": {"Every Hour": {"main": [[{"node": "Get New Docs", "type": "main", "index": 0}]]}, "Get New Docs": {"main": [[{"node": "Filter New", "type": "main", "index": 0}]]}, "Filter New": {"main": [[{"node": "Summarize", "type": "main", "index": 0}]]}}
+  "name": "Unique Node Name",
+  "type": "n8n-nodes-base.httpRequest",
+  "typeVersion": 4.2,
+  "position": [250, 300],
+  "parameters": {}
 }
 
-Now generate a workflow for the following description. Return ONLY the JSON, no markdown, no explanation:
+VALID NODE TYPES (use ONLY these exact type strings):
+- "n8n-nodes-base.scheduleTrigger"  typeVersion: 1.2  — runs on schedule
+  parameters: {"rule": {"interval": [{"field": "hours", "hoursInterval": 1}]}}
+- "n8n-nodes-base.manualTrigger"    typeVersion: 1    — manual run button
+  parameters: {}
+- "n8n-nodes-base.webhook"          typeVersion: 2    — HTTP webhook
+  parameters: {"path": "my-hook", "httpMethod": "POST", "responseMode": "onReceived"}
+- "n8n-nodes-base.httpRequest"      typeVersion: 4.2  — call any HTTP API
+  parameters: {"url": "https://...", "method": "GET"}
+- "n8n-nodes-base.set"              typeVersion: 3.4  — set/transform fields
+  parameters: {"assignments": {"assignments": [{"id": "1", "name": "field", "value": "val", "type": "string"}]}}
+- "n8n-nodes-base.if"               typeVersion: 2.2  — conditional branch
+  parameters: {"conditions": {"options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2}, "combinator": "and", "conditions": [{"leftValue": "={{ $json.status }}", "rightValue": "active", "operator": {"type": "string", "operation": "equals"}}]}}
+- "n8n-nodes-base.code"             typeVersion: 2    — run JavaScript
+  parameters: {"jsCode": "return items.map(item => ({ json: item.json }));"}
+- "n8n-nodes-base.dateTime"         typeVersion: 2    — date/time operations
+  parameters: {"operation": "getCurrentDate", "includeTime": true, "outputFieldName": "currentDate"}
+
+CONNECTIONS FORMAT — CRITICAL, must be exactly this structure:
+{
+  "TriggerNodeName": {"main": [[{"node": "NextNodeName", "type": "main", "index": 0}]]},
+  "NextNodeName": {"main": [[{"node": "FinalNodeName", "type": "main", "index": 0}]]}
+}
+The last node has NO entry in connections. For if-node: true branch is index 0, false branch is index 1.
+
+POSITIONING: Start at [250, 300], increment x by 250 for each node. Keep y at 300.
+
+INTERNAL URLS (inside Docker): Command Center API = http://api:8080
+
+REAL EXAMPLE — Pull crypto news every 6 hours:
+{"name":"Crypto News Monitor","nodes":[{"name":"Every 6 Hours","type":"n8n-nodes-base.scheduleTrigger","typeVersion":1.2,"position":[250,300],"parameters":{"rule":{"interval":[{"field":"hours","hoursInterval":6}]}}},{"name":"Fetch Crypto News","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[500,300],"parameters":{"url":"https://api.coingecko.com/api/v3/news","method":"GET"}},{"name":"Save to Command Center","type":"n8n-nodes-base.httpRequest","typeVersion":4.2,"position":[750,300],"parameters":{"url":"http://api:8080/documents","method":"POST","sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({title: $json.title, raw_text: $json.description || $json.title, source_type: \\\"crypto_news\\\"}) }}"}}],"connections":{"Every 6 Hours":{"main":[[{"node":"Fetch Crypto News","type":"main","index":0}]]},"Fetch Crypto News":{"main":[[{"node":"Save to Command Center","type":"main","index":0}]]}}}
+
+Now generate a workflow for this description. Return ONLY the JSON object, nothing else:
 """
 
 
@@ -271,7 +286,31 @@ def _execute_action(action_data: dict, model: str, db: Session) -> dict:
         return {"success": False, "message": f"Unknown action: {action}", "data": None}
 
 
+_WORKFLOW_KEYWORDS = [
+    "create workflow", "build workflow", "make workflow", "new workflow",
+    "create automation", "build automation", "make automation", "set up automation",
+    "create an n8n", "build an n8n", "make an n8n", "create n8n",
+    "automate", "schedule a task", "set up a schedule",
+    "pull from", "fetch from", "monitor and", "check every",
+]
+
+
+def _detect_workflow_intent(message: str) -> bool:
+    lower = message.lower()
+    return any(kw in lower for kw in _WORKFLOW_KEYWORDS)
+
+
 def process_user_message(message: str, model: str, db: Session, history: list[dict] | None = None) -> dict:
+    # Fast-path: keyword-detected workflow intent — skip chat model, go direct
+    if _detect_workflow_intent(message):
+        action_data = {"action": "create_workflow", "params": {"description": message}}
+        result = _execute_action(action_data, model, db)
+        return {
+            "response": result["message"],
+            "action_executed": "create_workflow",
+            "result": result,
+        }
+
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     if history:
         messages.extend(history)
@@ -282,7 +321,6 @@ def process_user_message(message: str, model: str, db: Session, history: list[di
     action_data = _extract_json(ai_response)
     if action_data and "action" in action_data:
         result = _execute_action(action_data, model, db)
-        # Strip the JSON from the display message
         clean_response = re.sub(r"```json\s*\{.*?\}\s*```", "", ai_response, flags=re.DOTALL).strip()
         if not clean_response:
             clean_response = result["message"]
