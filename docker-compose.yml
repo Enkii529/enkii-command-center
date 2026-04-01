@@ -17,6 +17,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    networks:
+      - cc-net
 
   redis:
     image: redis:7-alpine
@@ -29,6 +31,13 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cc-net
 
   api:
     build:
@@ -38,11 +47,35 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       API_PORT: ${API_PORT}
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CORS_ORIGINS: "*"
+      N8N_BASE_URL: http://n8n:5678
+      N8N_API_KEY: ${N8N_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
       - "${API_PORT}:${API_PORT}"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${API_PORT}/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cc-net
+
+  dashboard:
+    build:
+      context: ./dashboard
+    container_name: cc-dashboard
+    restart: unless-stopped
+    ports:
+      - "5629:5629"
+    depends_on:
+      - api
+    networks:
+      - cc-net
 
   appsmith:
     image: appsmith/appsmith-ce
@@ -54,6 +87,8 @@ services:
       - appsmith_data:/appsmith-stacks
     depends_on:
       - api
+    networks:
+      - cc-net
 
   metabase:
     image: metabase/metabase:latest
@@ -67,6 +102,8 @@ services:
       - metabase_data:/metabase-data
     depends_on:
       - postgres
+    networks:
+      - cc-net
 
   prometheus:
     image: prom/prometheus:latest
@@ -79,6 +116,8 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
+    networks:
+      - cc-net
 
   grafana:
     image: grafana/grafana:latest
@@ -95,6 +134,8 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
       - prometheus
+    networks:
+      - cc-net
 
   n8n:
     image: n8nio/n8n:latest
@@ -116,17 +157,35 @@ services:
       - ./n8n/workflows:/files/workflows
     depends_on:
       - api
+    networks:
+      - cc-net
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: cc-ollama
-    restart: unless-stopped
-    environment:
-      OLLAMA_HOST: ${OLLAMA_HOST}
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
+  # Ollama runs natively on the host (not in Docker) for best GPU performance.
+  # The API connects via host.docker.internal:11434.
+  # To run Ollama in Docker instead, uncomment below:
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: cc-ollama
+  #   restart: unless-stopped
+  #   environment:
+  #     OLLAMA_HOST: ${OLLAMA_HOST}
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [gpu]
+  #   networks:
+  #     - cc-net
+
+networks:
+  cc-net:
+    driver: bridge
 
 volumes:
   postgres_data:
