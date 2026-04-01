@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .db import get_db
 from . import schemas
-from .routers import ai, dashboard
+from .routers import ai, dashboard, n8n
 from .ai_actions import process_user_message
 from .ollama import get_default_model
 
@@ -32,6 +32,7 @@ Instrumentator().instrument(app).expose(app)
 # Routers
 app.include_router(ai.router)
 app.include_router(dashboard.router)
+app.include_router(n8n.router)
 
 
 def rows_to_dicts(result):

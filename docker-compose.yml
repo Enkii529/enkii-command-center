@@ -50,6 +50,8 @@ services:
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CORS_ORIGINS: "*"
+      N8N_BASE_URL: http://n8n:5678
+      N8N_API_KEY: ${N8N_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
