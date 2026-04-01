@@ -49,7 +49,7 @@ export async function fetchN8nWorkflows() {
   return res.json()
 }
 
-export async function buildN8nWorkflow(description, model = 'qwen2.5-coder:7b', deploy = true) {
+export async function startN8nBuildJob(description, model = 'qwen2.5-coder:7b', deploy = true) {
   const res = await fetch(`${API}/n8n/build`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -57,9 +57,15 @@ export async function buildN8nWorkflow(description, model = 'qwen2.5-coder:7b', 
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
-    throw new Error(err.detail || 'Build failed')
+    throw new Error(err.detail || 'Failed to start build job')
   }
-  return res.json()
+  return res.json() // { job_id, status }
+}
+
+export async function pollN8nBuildJob(jobId) {
+  const res = await fetch(`${API}/n8n/build/${jobId}`)
+  if (!res.ok) throw new Error('Job not found')
+  return res.json() // { id, status, result, error }
 }
 
 export async function activateN8nWorkflow(id) {
